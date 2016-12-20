@@ -1,0 +1,508 @@
+---
+title: "INFX 573 Final"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE }
+
+#load required libraries for each problem set
+library(AER)
+library(Amelia)
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(bestglm)
+library(car)
+library(MASS)
+library(boot)
+library(tree)
+library(DAAG)
+library(randomForest)
+library(ROCR)
+library(pROC)
+library(boot)
+```
+
+#Problem 1 (25 pts)
+In this problem we will use data about in???delitys, known as the Fair's A???airs dataset. The 'A???airs' dataset is available as part of the AER package in R. This data comes from a survey conducted by Psychology Today in 1969, see Greene (2003) and Fair (1978) for more information.
+The dataset contains various self-reported characteristics of 601 participants, including how often the respondent engaged in extramarital sexual intercourse during the past year, as well as their gender, age, year married, whether they had children, their religiousness (on a 5-point scale, from 1=anti to 5=very), education, occupation (Hillinghead 7-point classi???cation with reverse numbering), and a numeric self-rating of their marriage (from 1=very unhappy to 5=very happy).
+
+####(a) Describe the participants. Use descriptive, summarization, and exploratory techniques to describe the participants in the study. For example, what proportion of respondents are female? What is the average age of respondents?
+```{r load_data}
+#load necessary datasets for problem 1 
+data(Affairs)
+Affairs_df <- tbl_df(Affairs)
+```
+
+```{r data insepction}
+#count the number of rows and columns in the dataset
+dim(Affairs_df)
+#check the datatype of each column
+str(Affairs_df)
+#exam summary statistics of each column
+summary(Affairs_df)
+#exam the first 5 rows of the dataset
+head(Affairs_df,5)
+#exam the last 5 rows of the dataset
+tail(Affairs_df,5)
+
+#check and see if there are any missing values
+sum(is.na(Affairs_df))
+```
+The 'Affairs' dataset containts 601 responses and across 9 different variables The numeric variables are: 'affairs' (How often engaged in extramarital sexual intercourse during the past year) ,'age' (age in years), 'yearsmarried'(numberofyearsmarried),and 'education'(level of education based on  9=gradeschool,12=highschoolgraduate, 14 = some college, 16 = college graduate, 17 = some graduate work, 18 = master's degree, 20 = Ph.D., M.D., or other advanced degree). The factor variables are 'gender' (the gender of each respondent) and 'children'(are there children in the marriage). The int variables are 'religiousness'(1 = anti, 2 = not at all, 3 = slightly, 4 = somewhat, 5 = very), 'occupation'(numeric coding according to Hollingshead classification), and 'rating'(self rating of marraige: 1 = very unhappy, 2 = somewhat unhappy, 3 = average, 4 = happier than average, 5 = very happy).The dataset seems to be roughly normally distributed,and there are not missing values.  
+
+The 'average' age of resondents is '32.49' years old. The youngest respondent is 17.5 years old and the oldest respondent is 57 years old. Most of the respondents have been married for '8.178' years, with a few married for as few as 0.125 years and as long as 15 years. The average age of 
+
+####((b) Suppose we want to explore the characteristics of participants who engage in extramarital sexual intercourse (i.e. a???airs). Instead of modeling the number of a???airs, we will consider the binary outcome - had an a???air versus didn't have an a???air. Create a new variable to capture this response variable of interest.
+```{r}
+#load the dataset
+Affairs_df %>%
+#create a new variable HF(having affair) that stores whether or not affair column is greater than 0. A better way to do this is Affairs_df$HF <- with(Affairs,affairs #> 0)
+mutate(HF = affairs> 0 ) -> Affairs_df
+```
+
+####((c) Use an appropriate regression model to explore the relationship between having an a???air and other personal characteristics. Comment on which covariates seem to be predictive of having an a???air and which do not.
+
+```{r regression model }
+#convert HF to integer
+Affairs_df$HF <- as.integer(Affairs_df$HF)
+#binary outcome of the dependent variable, so I suggest using logistic regression model for the binary response.Since we are not sure which one predicator is contributes more #to the response yet, I will fit all of predictors in this model. 
+affair.lm <- glm(HF ~ gender + age + yearsmarried + religiousness + education + occupation + rating, data= Affairs_df, family=binomial(link="logit"))
+#exam the coefficients of each predictor variables.
+summary(affair.lm)
+```
+According to the p values listed in the model, 'yearsmarried','religiousness','rating' are statistically significant for predicting response variable 'HF'. 'age' is less statistically significant compare to the other 3 predictors. The logistic regression coefficients give the change in the log odds of the outcome for a one unit increase in the predictor variable. 
+
+####((d) Use an all subsets model selection procedure to obtain a "best" ???t model. Is the model di???erent from the full model you ???t in part (c)? Which variables are included in the "best" ???t model? You might ???nd the bestglm() function available in the bestglm package helpful.
+
+```{r all-ubsets Regression}
+attach(Affairs_df)
+#create an all-subset regression
+regfit.full = regsubsets(HF~.,Affairs_df)
+#view results
+subset.summary = summary(regfit.full)
+#check and see if R square statistic increase monotonically as we add more variables
+subset.summary$rsq
+
+#plot RSS and adjusted RSq on the sample plot to exam which model to select 
+par(mfrow=c(2,2))
+plot(subset.summary$rss,xlab="Number of Variables",ylab="RSS", type = "l")
+plot(subset.summary$adjr2,xlab="Number of Variables",ylab="adjusted Rsq",type= 'l')
+points(5,subset.summary$adjr2[5], col = "red", cex =2,pch =20)
+#loacte the models with the maximal adjusted r square value for the best model
+which.max(subset.summary$adjr2)
+
+#plot adjusted R square and BIC statistics
+#plot(regfit.full ,scale="adjr2")
+#plot(regfit.full ,scale="bic")
+
+#exam the coefficients of the best fit model
+coef(regfit.full ,5) 
+```
+
+Based on the adjusted R square statistic, the best fit model has 5 variables, with the maximum value of adjusted R square equal to 0.590, this model has all the "correct" variables in the model. The  correlation between response variable HF and predictors are the strongest. In the best fit model, we have affairs, gender, age, yearsmarried, children as the predictors. 
+```{r}
+#the "best fit model"
+bestfit.glm <- glm(HF~ affairs + gender + age + yearsmarried + children, data =Affairs_df)
+#exam the ouput
+summary(bestfit.glm)
+```
+
+The model we created has only accounted for the training error, and eventually we want to choose a model with the lowest testing error, as training errors often underestimate the testing errors. Therefore, RSS and R square are not useful in estimate testing errors. Cross validation,Akaike information criterion, Bayesian informaion criterion, and adjusted R square are therefore used to adjust the training error and can be used to select among a set of models that have ddiferent number of variables. Each of these approach may produce different "best fit" model that have different numberof predicators. We are using adjusted R square to evaluate the best fit model, once all of the correct variables have been included in the model, adding addtional predictors (noise) variables will only lead to a very small in RSS, which consequently the decresse of adjusted R square.
+####((e) Interpret the model parameters using the model from part (d).
+
+For all five predictors in the bestfit.glm model:
+  For ever one unit increase in 'age', the log odds of having affairs decreases by -0.0022956
+  If the respondent has 'children', the log odds of having affairs increases by 0.0742163  
+  For every one unit increase in 'affairs',  the log odds of having affairs decreses by 0.1002973
+  For every one unit incrase in 'yearsmarried', the log odds of having affairs decreases by 0.0742163 
+  If the respondent is male, the log odds of having affairs increases by 0.0401377
+
+####((f) Create an arti???cial test dataset where martial rating varies from 1 to 5 and all other variables are set to their means. Use this test dataset and the predict function to obtain predicted probabilities of having an a???air for case in the test data. Interpret your results and use a visualization to support your interpretation.
+
+```{r}
+#create the artificial test dataset
+test_art <- Affairs_df
+#randomly generate integers between 1 and 5 for affairs column
+test_art$affairs<- sample(1:5, nrow(Affairs_df), replace=T)
+#replace the rest of the variables with their column means, except for gender,HF, and children since they are not numerical
+test_art$age <- mean(test_art$age)
+test_art$yearsmarried <- mean(test_art$yearsmarried)
+test_art$religiousness<- mean(test_art$religiousness)
+test_art$education<- mean(test_art$education)
+test_art$occupation<- mean(test_art$occupation)
+test_art$rating<- mean(test_art$rating)
+
+
+#make prediction using bestfit.glm
+yhat.best <- predict(bestfit.glm, newdata = test_art,type ="response")
+#exam the output
+summary(yhat.best)
+
+(ROC3<- roc(test_art$HF, yhat.best))
+plot(ROC3, main="testing data ROC")
+```
+The results shows a ROC value of 0.506, which means the model is nearly useless in predicting new data, as most of the prediction produced large number of false positives and negatives. 
+
+#Problem 2 (25 pts)
+In this problem we will revisit the state dataset. This data, available as part of the base R package, contains various data related to the 50 states of the United States of America.
+Suppose you want to explore the relationship between a state's Murder rate and other characteristics of the state, for example population, illiteracy rate, and more. Follow the questions below to perform this analysis.
+####((a) Examine the bivariate relationships present in the data. Brie???y discuss notable results. You might ???nd the scatterplotMatrix() function available in the car package helpful.
+```{r bivariate statistics}
+#load state data 
+state_data <- state.x77
+#combine variables in the dataset into a single dataframe
+state_data <- data.frame(state_data)
+#exam the correlations between murderand other variables
+cor(state_data)
+
+#Create a scatter matrix to exam the bivariate relationship between Murder and other variables. 
+scatterplotMatrix(~ Murder + Income  + Life.Exp + HS.Grad + Population +Illiteracy  + Area + Frost, data=state_data)
+
+#Let's take a closer at Look at Illiteracy V. Murder separately
+p_Illiteracy <- ggplot(state_data, aes(x = Illiteracy,y = Murder))
+p_Illiteracy + geom_point() + stat_smooth()
+#HS.Grad v.s Murder 
+p_HS.Grad <-ggplot(state_data, aes(x = HS.Grad,y = Murder))
+p_HS.Grad + geom_point() + stat_smooth()
+```
+We can see some obvious bivariate relationship between 'Murder' and other variables, for example,'Murder'increases as Illiteracy increases. We also observed both linear and non-linear relationships between 'Murder' and other characteristics. 'Murder' decreases as 'HS.Grad' rate increases, and it rises up again at around 60% of High school graduation rate. 'Murder' and 'Illiteracy'have a strict linear relationship compare to other characteristics. 
+
+####((b) Fit a multiple linear regression model. How much variance in the murder rate across states do the predictor variables explain?
+```{r Multiple linear regression model}
+#fit all predictors into one regression model
+mlm.fit <- lm(Murder ~.,data = state_data)
+#exam the output
+summary(mlm.fit)
+
+#exam incremental variance explained in each predictor
+(amf <- anova(mlm.fit))
+#calculate the pecentage of variance explained by each predictor
+afsq <- amf$"Sum Sq"
+#print out the modified results with percentage of variance
+print(cbind(amf,varPercent=afsq/sum(afsq)*100))
+```
+The variance in the murder rate across states is explained 11.8% by Population, 9.5% by Income, 35.4% by Illiteracy, 20.9% by Life.Exp, 20.9% by HS.Grad, 1.2% by Frost, and 1.1% by Area. Also we can see that only 'Life.Exp' and 'Population' are statistically significant in this multiple regression model.
+####((c) Evaluate the statistical assumptions in your regression analysis from part (b) by performing a basic analysis of model residuals and any unusual observations. Discuss any concerns you have about your model.
+```{r residual analysis}
+#arrange plots in 2x2 format for better readability
+par(mfrow= c(2,2))
+#create diagonistic plots to exam the fit of the model. 
+plot(mlm.fit)
+```
+Let's conduct a residual analysis to understand if multiple regression model is the right model for our analysis. 
+1)In the Residuals v. Fitted plot, we find residuals have little patterns and are almost equally distributed around the horizontal line.This implies a linear relationship  between response and predictors. This satistify the assumption that the regression funtion is linear. 
+
+2)In the Normal Q-Q plot, the errors are normally distributed., which supports previous claim of a linear relationship, excep a few on the left end. 
+
+3)In the scale location plot, we evaluate the homoscedasticity of the model, the square root of the standardized residuals are overall normally and randomly distributed, this confirms error terms have constant variance.  The variance in the residuals doesn't change as a function of x, the red line should be relatively flat. except few data point at the left end to pull it down. 
+
+4)In the Residuals v.Leverage plot, most of the standardized residuals are centered around zero and reach 2-3 standard deviations away from zero, and symmetrically so about zero, there are few points that have high leverage, such as Nevada and Hawaii, but overall it does not greatly affect coeffieicents of the linear model
+####((d) Use a stepwise model selection procedure of your choice to obtain a "best" ???t model. Is the model di???erent from the full model you ???t in part (b)? If yes, how so?
+```{r stepwise}
+#create stepwise model based on AIC value
+model.stepwise <- stepAIC(mlm.fit, trace= FALSE, direction=c("both"))
+#exam the output
+summary(model.stepwise)
+```
+The model we obtained from stepwise is similar to the full model earlier but slightly better fitted with an adjusted R square value of '0.7848'. The new model also excluded statistically unsignificant predictors from (b), such as  "HS.Grad" and "Income".
+####((e) Assess the model (from part (d)) generalizability. Perform a 10-fold cross validation to estimate model performance. Report the results.
+```{r Assess generalizability}
+#set seed to make sure we will obtain the same results everytime
+set.seed(17)
+#define a list that has value from 0 to 10
+cv.error.10 = rep(0,10)
+##refit model.stepwise into a glm model instead of lm
+#and loop through each fold of validation dataset to calculate MSE respectively
+for (i in 1:10) {
+glm.fit<-glm(Murder ~ Population + Illiteracy + Life.Exp + Frost + Area ,data = state_data, family = gaussian(link="identity")) 
+cv.error.10[i]=cv.glm(state_data,glm.fit,K =10)$delta[1]
+}
+#view all 10 cross validation errors. 
+cv.error.10
+```
+The 10-fold cross-validation suggests the best model has MSE value of 3.287814 on the 10th fold, which means when the 10th fold data is used as the testing dataset, our model has the lowest MSE values, and the worst model has MSE value of 3.888249 on the 1st fold. 
+
+####((f) Fit a regression tree using the same covariates in your "best" ???t model from part (d). Use cross validation to select the "best" tree.
+```{r regression tree}
+#set seeds to make the data split repeatable by others
+set.seed(1234)
+train = sample(1:nrow(state_data),nrow(state_data)/2)
+#fit a regression tree model based on our stepwise model earlier
+tree.state = tree(Murder ~ Population + Illiteracy + Life.Exp + Frost + Area, data = state_data, subset=train)
+#exam the output
+summary(tree.state)
+#plot the tree
+plot(tree.state)
+text(tree.state,pretty=0)
+
+#Cross validate the data and see if pruning the tree will improve the performance of our model. 
+cv.state = cv.tree(tree.state)
+plot(cv.state$size,cv.state$dev,type ='b')
+
+#prune the tree, which we normally use to select 
+#branches with the lowest cross-validatin error to avoid overfitting. 
+#In this case, we don't need to prune the tree since branch 3 alreay has the lowest cross-validation error, 
+#but I provided the methods just for reference. 
+prune.state_data = prune.tree(tree.state,best = 3)
+plot(prune.state_data)
+text(prune.state_data, pretty =0)
+
+#make prediction with unpruned tree and base on test dataset
+yhat.tree = predict(tree.state, newdata= state_data[-train,])
+#select the test dataset form our state_data
+state.test = state_data[-train,"Murder"]
+#plot the distribution of the predicted Murder rate
+plot(yhat.tree, state.test)
+#fit a line to our model
+abline(0,1)
+#calculate the mean square error for our model prediction
+mean((yhat.tree - state.test)^2)
+```
+In the regression tree model, only 'Life.Exp' and 'Frost' were used to construct the tree. Based on the tree plot, it suggests lower value of the omean number of days with minimum temperature below freezing corresponds to higher the murder rate.The tree predict the mean murder rate is 4.9 when the life expectancy is more than 70.915 years old.
+
+####((g) Compare the models from part (d) and (f) based on their performance. Which do you prefer? Be sure to justify your preference.
+Based on our cross-validation results. The 'model.stepwise' multiple regression model from (d), out of all 10-fold corss-validation results, the lowest a MSE value is 3.287814. On the other hand, our regression tree model has a MSE value of 4.940768. Based on these two statistics alone (since lower value of MSE corresponds to lower deviance from the actual value), we can conclude model.stepwise model is more accurate than our regression tree model in (f). 
+
+
+#Problem 3 (25 pts)
+The Wisconsin Breast Cancer dataset is available as a comma-delimited text ???le on the UCI Machine Learning Repository http://archive.ics.uci.edu/ml. Our goal in this problem will be to predict whether observations (i.e. tumors) are malignant or benign.
+####((a) Obtain the data, and load it into R by pulling it directly from the web. (Do not download it and import it from a CSV ???le.) Give a brief description of the data.
+```{r load the dataset}
+#load the data from the url on UCI machine learningg website Wisconsin-breast-cancer.data, and drop the string '?' 
+diagnosis_data <- read.csv(url("https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data"), header =FALSE, na.string = '?')
+#exam the data type of each column
+str(diagnosis_data)
+#exam the top five rows
+head(diagnosis_data,5)
+#exam the bottom five rows
+tail(diagnosis_data,5)
+#summary statistics
+summary(diagnosis_data)
+#check and see if there are any missing values. 
+#which(is.na(diagnosis_data))
+```
+#  Attribute                     Domain
+   -- -----------------------------------------
+   1. Sample code number            id number
+   2. Clump Thickness               1 - 10
+   3. Uniformity of Cell Size       1 - 10
+   4. Uniformity of Cell Shape      1 - 10
+   5. Marginal Adhesion             1 - 10
+   6. Single Epithelial Cell Size   1 - 10
+   7. Bare Nuclei                   1 - 10
+   8. Bland Chromatin               1 - 10
+   9. Normal Nucleoli               1 - 10
+  10. Mitoses                       1 - 10
+  11. Class:                        (2 for benign, 4 for malignant)
+
+
+
+The Wisconsin-breast-cancer dataset (January 8, 1991) is found on CI machine learning repository, 
+the link to the site is:"https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data". The source of the data is Dr.William H.Wolberg (physician) from University of Wisconsin Hospitals. The dataset has a total of 699 observations, and 11 variables. The numeric variables are 'Sample code number' (the coding for each sample), 'Clump Thickness'(the thickness of breast clump mass),'Uniformity of Cell Size'(the size of the cell from the center) . 'Uniformity of Cell Shape'(), 'Marginal Adhesion', 'Single Epithelial Cell Size'(size of ), 'Bare Nuclei'(size of bare nuclei),'Bland Chromatin','Normal Nucleoli','Mitoses', and 'Class' (2 for benign, 4 for malignant)  
+
+####((b) Tidy the data, ensuring that each variable is properly named and cast as the correct data type. Discuss any missing data.
+From previous inspection of the dataset, there seems to be 16 missing values that are marked with '?'. The column names are replaced by the first row of the observations. we will need to replace the missing values by assign the mean value of each respective column, and create new names for each of the column to reformat our dataset. 
+```{r tidy the dataset}
+#add column names for each variable
+names(diagnosis_data) <- c("Sample_Code_Number","Clump_Thickness", "Uniformity_of_cell_Size", "Uniformity_of_Cell_Shape","Marginal_Adhesion","Single_Epithelial_Cell_Size", "Bare_Nuclei","Bland_Chromatin","Normal_Nucleoli","Mitoses","Class")
+#Deal with missing values by replacing all NAs with the mean value of respective column.
+for(i in 1:ncol(diagnosis_data)){ diagnosis_data[is.na(diagnosis_data[,i]), i] <- mean(diagnosis_data[,i], na.rm = TRUE) }
+#Check for any remaining missing values
+#is.na(diagnosis_data)
+
+```
+
+####((c) Split the data into a training and validation set such that a random 70% of the observations are in the training set.
+```{r split the data}
+#remove the first column of the data since it is not related to the #question we exploring. 
+diagnosis<- diagnosis_data[ , c(2:11)]
+#since logistic regression takes a value of 1 or 0,we need to convert our class value into 1 or 0
+#First we will convert the Class column to numeric data type
+diagnosis$Class <- as.numeric(diagnosis$Class)
+#reassign benigh as 0
+diagnosis$Class[diagnosis$Class ==2] <- 0
+
+#reassign malignant as 1
+diagnosis$Class[diagnosis$Class == 4] <- 1
+
+
+#set seed to get the same seuquence next time 
+set.seed(1)
+#create a training set in which 70% of the data come from observation data
+training <- sample(1:nrow(diagnosis),nrow(diagnosis) * 0.7) 
+validation <- diagnosis[-training,]
+```
+
+####((d) Fit a regression model to predict whether tissue samples are malignant or benign. Classify cases in the validation set. Compute and discuss the resulting confusion matrix.
+```{r}
+#train a logistic regression model since we are concerned with if a tissue sample is malignant or benign. 
+class.glm <- glm(Class ~., data= diagnosis, subset = training, family = binomial)
+#exam the output 
+summary(class.glm)
+#exam the output
+#predict whether tissue samples are malignant or benign
+yhat <- predict(class.glm, newdata = diagnosis[-training,], type = "response")
+#exam the output of probabilities
+summary(yhat)
+#create a confusion matrix
+table(validation$Class)
+
+
+#plot the roc curve
+(roc1 <- roc(validation$Class, yhat))
+plot(roc1,main="Logistic regresion ROC")
+
+```
+The regression model produced 130 false positives (belign but marked as malignant), 0 true positives, 80 true negatives(belign and marked belign), and 1 false negative (malignant but marked as belign).
+
+Based output of 'class.glm' logsitic regression model, only three predictors seem to be statistically significant, we will fit a new model based on this results, call it 'class.glm1':
+
+
+####((e) Fit a random forest model to predict whether tissue samples are malignant or benign. Classify cases in the validation set. Compute and discuss the resulting confusion matrix.
+```{r}
+#factors needfor RF classifier
+#training$cla = factor(training$Class)
+set.seed(55)
+#reate a random forest model with th training dataset
+class.rf = randomForest(Class ~., data = diagnosis,subset=training, importance =TRUE)
+
+#visualize the model
+plot(class.rf,main ="RF model")
+
+#make a prediction using the randomforest model
+yhat2 <- predict(class.rf, newdata = diagnosis[-training,])
+#exam the output
+summary(yhat2)
+
+#create a confusion matrix for randomForest model
+table(validation$Class)
+```
+The random forest model produced 121 false positives (belign but marked as malignant), 0 true positives, 86 true negatives(belign and marked belign), and 1 false negative (malignant but marked as belign)
+####((f) Compare the models from part (d) and (e) using ROC curves. Which do you prefer? Be sure to justify your preference.
+```{r ROC curves comparision}
+plot(roc(validation$Class, yhat),col='red')
+lines(roc(validation$Class, yhat2), col='green')
+```
+Based on the comparision of ROC curve for Logistic Regression model and Random Forest model, I would prefer the RandomForest model has a slighly higher ROC value.
+
+#Problem 4 (25 pts)
+Please answer the questions below by writing a short response.
+##(a) Describe three real-life applications in which classi???cation might be useful. Describe the response, as well as the predictors. Is the goal in each application inference or predictions? Explain your answer.
+1)Assume we are trying to predict if a person makes more than 50k year or less based on the census dataset, and there are 5 attributes that contribute to the income of each person: age, workclass,education, occupation, and sex. We have a sample of 100,000 individuals from the past 10 years.By analyzing the 100,000 samples, a classification regression is used to predict if an individual is making 50k or not. The response here is greater than 50k per year/or less. The predictors are age, workpclass, education, occupation, and sex. The goal of this application ispredication.   
+
+2)When an individual takes home mortage from the bank, there are two conditions: default or non-default.The condition of the morgate conditions are related to four variables: income, education, banking balance, and previous credits. We are interested in if a potential buyer will default or not in the future. Let's say we have 10000 samples from previous clients, by analyzing the 10000 samples a classification regression analysis could be used to predict if a buyer will default or not. The response is default/non-default. The predictors are buyers' income, education, banking balance, and previous credits. The goal of this application is predication, since we are trying to use model that is built from previous dataset to predict new data for a binary outcome. 
+
+3)Assuming we want to determine if a user will click on a cerntain link for an add. Let's say 4 factors that contribute to whether a link will be clicked by an internet user: user's browsing history, context of the Ad, the age of the user, and the GPS location of the user. Suppose we have 500 sample data from users' previous clicking habit. By analyzing those 500 samples, a classification model could be used to predict if a buyer will click or not. The response is click/or not click. The predictors are user's browsing history, context of the Ad, the age of the user, and the GPS location of the user. This application is used for prediction. 
+
+##(b) Describe three real-life applications in which regression might be useful. Describe the response, as well as the predictors. Is the goal in each application inference or predictions? Explain your answer.
+1)Assume a marketing manager needs to predict how much a customer will spend during a sale at a clothing store. The amount of money a customer will spend is related to many factors, here let's say 4 factors: age, previous spending amount,frequency of visit, and gender. Let's say we have sampled 200 previous customers from the past year, and a regression model is needed to regress the curent spending amount. The response is current spending amount, the predictors are age, previous spending amount, frequency of visit, and gender are predictors. The goal of this application is for prediction. 
+
+2)Farmer's often need to know how that temperatures are changing so that they better prepare crops for possible cold freeze. The temperature of the next day is related to multiple current daily factors, let's say 5: cloud coverage, temperature, length of the day, alttitude, and lattitude. We need to build a regression model to regress the temperature for the next based on those current daily factors. Suppose we have data from past 10 years and 3650 observations. The response is the next day temperature, and the predictors are cloud coverage, temperature, length of the day, alttitude, and lattitude The gola of this application is to predict the next day temperature. 
+
+3)Students score on final exam is related to many factors,let's say 4 factors: hours of sleep, hours spent studying the material, total attendance to class, and time spent during office hour. We need to build a multiple linear regression model to regress students' score on final exam, and exam how strong each factor related to student's performance on final exam. Let's say we have collected data from 500 students at school A. The response is student's score on final exam, and predicators are total attendance to class, time spent during office hour, hours of sleep, and hours spent studying the material. This is an application of inference since we are making conclusion of based on evidence from current data. 
+
+##(c) What are the advantages and disadvantages of a very ???exible (versus a less ???exible) approach for regression or classi???cation? Under what circumstances might a more ???exible approach be preferred to a less ???exible approach? When might a less ???exible approach be preferred? 
+Advantages:
+
+very flexible: a very flexible approach for regression is more generalized towards new data, but it is less accurate or precise. For example, if the response and predictors have a highly non-linear  relationship, a more flexible model is probably better at fitting the data and decrease bias. 
+less flexible: A less flexible approach is better fited with the dataset used by fitting the model. When we have high dimensional data, so inflexible model such as linear model could give us a better understanding of trend in our observations than flexible models. 
+
+
+Disadvantages:
+
+Very flexible: Too much flexibility in regression might overfit the data (by estimating more parameters and follow noise too closely), which cause the model to perform pororly ion an independent test dataset and increase variance
+Less flexible: it is less generalized towards new datasets
+
+Overall, if we are interested in prediction and not the interpretability of the results, more flexible model is preferred. 
+If we are interested in inference and the interpretability of the results, more inflexible model is preferred.
+
+#Problem 5 (??? 5 pts)
+Suppose we have a dataset with ???ve predictors, X1 = GPA, X2 = IQ, X3 = Gender (1 for Female, and 0 for Male), X4 = Interaction between GPA and IQ, and X5 = Interaction between GPA and Gender. The response is starting salary after graduation (in thousands of dollars). Suppose we use least squares to ???t the model and get ^ ??0 = 50, ^ ??1 = 20, ^ ??2 = 0.07^ ??3 = 35, ^ ??4 = 0.01, and ^ ??5 = ???10. 
+
+The model based on the description in the problem set is: 
+                                                  
+                                                  'y = 50 + 20*X1 + 0.07*X2 + 35*X3 + 0.01*X4 -10*X5'  
+##(a) Which answer is correct and why?
+i. For a ???xed value of IQ and GPA, males earn more on average than females. 
+ii. For a ???xed value of IQ and GPA, females earn more on average than males. 
+iii. For a ???xed value of IQ and GPA, males earn more on average than females provided that the GPA is high enough. iv. For a ???xed value of IQ and GPA, females earn more on average than males provided that the GPA is high enough.
+
+After taking a look at the regression model, it is obvious that with fixed IQ and GPA, males earns more on average, since x5 = 0 for male, but -10 for female.So answer i is correct 
+
+##(b) Predict the salary of a female with IQ of 110 and a GPA of 4.0.
+```{r}
+#When X2 = 110, X1 = 4.0, calculate Y
+(Y <- 50 + 20* 4.0 + 0.07 * 110 + 35* 1 + 0.01 * 110 * 4.0 - 10 * 4.0* 1)
+```
+The starting salary of a female with IQ of 110 and GPA of 4.0 would be `137.1`.
+ 
+##(c) True or false: Since the coe???cient for the GPA/IQ interaction term is very small, there is little evidence of an interaction e???ect. Justify your answer.
+False. The coefficient of 0.01 for the GPA/IQ suggests an exisitng interaction between GPA and IQ. In fact, the value of the coefficient tells us about the unique effect of how either GPA or IQ contribute to the starting salary. In the case of unique effect of GPA, the total effect is '??1 + ??4 * IQ. On the other hand, the unique effect of IQ, is ??2 + ??4* GPA. 
+
+The coefficient value has nothing to do with the evidence of an interacting effect. T-statistics or P values is normally used to check if there are any interaction between variables. 
+
+
+#Problem 6 - Extra Credit (??? 5 pts)
+Apply boosting, bagging and random forests to a dataset of your choice that we have used in class. Be sure to ???t the models on a training set and evaluate their performance on a test set.
+```{r load data}
+#load Boston dataset
+Boston_data <- Boston
+set.seed(41)
+#create a training dataset by diving the dataset in half. 
+boston_train = sample(1:nrow(Boston_data), nrow(Boston_data)/2)
+#create the test dataset
+Boston_testing=Boston[-boston_train ,"medv"]
+#perfrom bagging fo our dataset
+bag.boston_data = randomForest(medv~.,data=Boston_data,subset=boston_train, mtry =13, importance =TRUE)
+
+#view the results
+bag.boston_data
+
+#predict the median income in Boston dataset using bagging
+bag.pred = predict(bag.boston_data,newdata = Boston_data[-boston_train,])
+#calculate the mean square of errors 
+mean((bag.pred - Boston_testing)^2)
+
+
+#fit a random forest model
+set.seed(1)
+rf.boston_data = randomForest(medv~., data=Boston_data,subset=boston_train,mtry = 6, importance =TRUE)
+
+#predict the median income from the random forest model
+rf.pred = predict(rf.boston_data,newdata = Boston_data[-boston_train,])
+#calculate the mean square error
+mean((rf.pred - Boston_testing)^2)
+
+```
+The RandomForest model performed slighly better than the bagging model.The RandomForest model has MSE value of 15.14264. In contrast, the bagging model has MSE value of 15.98623.
+##(a) How accurate are the results compared to simple methods like linear or logistic regression?
+```{r fit a  linear regression}
+#fit a  linear regression model
+lm.fit <- lm(medv~.,data=Boston_data,subset=boston_train)
+#exam the results
+summary(lm.fit)
+#predict the meain income with our linear model
+lm.pred  = predict(lm.fit, newdata = Boston_data[-boston_train,])
+#calculate the mean squared values of our model. 
+mean((lm.pred - Boston_testing)^2)
+```
+The multiple regression model has a MSE of 26.43435, which is significanlly higher than bagging and randomforest. 
+##(b) Which of the approaches yields the best performance?
+RandomForest Model yields the best performance. 
+
+
+
+Text book Reference:
+[1]James et al. (2013). An Introduction to Statistical Learning with Applications in R,Chapters 1-12 Springer.
+[2]Lander, Jared P. (2015). R for Everyone: Advanced Analytics and Graphics. Chapters 1-18. Pearson Education, Inc
+
+
+Statement of Compliance: Please copy and "sign" the following statement.
+I a???rm that I have had no conversation regarding this exam with any persons other than the instructor (Dr. Emma Spiro). Further, I certify that the attached work represents my own thinking. Any information, concepts, or words that originate from other sources are cited in accordance with University of Washington guidelines as published in the Academic Code (available on the course website). I am aware of the serious consequences that result from improper discussions with others or from the improper citation of work that is not my own.
+
+(signature)__Chang (Jay) Liu__
+(date)_______12/6/16__________
